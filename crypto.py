@@ -1,24 +1,19 @@
 from cryptography.fernet import Fernet
 import os
+from dotenv import load_dotenv
 
-KEY_FILE = "secret.key"
+load_dotenv()
 
-def load_key():
-    if not os.path.exists(KEY_FILE):
-        key = Fernet.generate_key()
-        with open(KEY_FILE, "wb") as key_file:
-            key_file.write(key)
-    with open(KEY_FILE, "rb") as key_file:
-        return key_file.read()
+def get_key():
+    key = os.getenv("SECRET_KEY")
+    if not key:
+        raise ValueError("Ключ SECRET_KEY не найден в .env")
+    return key.encode()
 
 def encrypt_message(text):
-    key = load_key()
-    f = Fernet(key)
-    encrypted = f.encrypt(text.encode())
-    return encrypted.decode()
+    f = Fernet(get_key())
+    return f.encrypt(text.encode()).decode()
 
 def decrypt_message(encrypted_text):
-    key = load_key()
-    f = Fernet(key)
-    decrypted = f.decrypt(encrypted_text.encode())
-    return decrypted.decode()
+    f = Fernet(get_key())
+    return f.decrypt(encrypted_text.encode()).decode()

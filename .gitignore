@@ -1,0 +1,20 @@
+venv/
+.venv/
+
+__pycache__/
+*.pyc
+
+.idea/
+
+#SQLite
+messenger.db
+messenger.db-wal
+messenger.db-shm
+
+#файлы и аватарки
+uploads/
+avatars/
+
+#секретный ключ
+.env
+secret.key
