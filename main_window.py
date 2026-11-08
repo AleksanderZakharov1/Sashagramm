@@ -2,9 +2,9 @@ from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QDialog,
     QListWidget, QListWidgetItem, QPushButton, QLineEdit, QTextBrowser,
     QLabel, QMessageBox, QFileDialog, QTabWidget, QTableWidget,
-    QTableWidgetItem, QHeaderView
+    QTableWidgetItem, QHeaderView, QApplication
 )
-from PyQt6.QtCore import QUrl, Qt
+from PyQt6.QtCore import QUrl, Qt, QTimer
 from PyQt6.QtGui import QDesktopServices, QAction, QPixmap
 import shutil
 import os
@@ -75,6 +75,7 @@ class MainWindow(QMainWindow):
         self.username = username
         self.current_chat_id = None
         self.all_chats = []
+        self.last_unread = {}
 
         self.setWindowTitle(f"Сашаграмм - {self.username}")
         self.resize(1000, 700)
@@ -83,6 +84,10 @@ class MainWindow(QMainWindow):
         self.setup_ui()
         self.load_data()
         self.load_avatar()
+
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.check_notifications)
+        self.timer.start(2000)
 
     def setup_menu_bar(self):
         self.menubar = self.menuBar()
@@ -122,7 +127,22 @@ class MainWindow(QMainWindow):
 
         self.central = QWidget()
         self.setCentralWidget(self.central)
-        self.main_layout = QHBoxLayout(self.central)
+
+        self.outer_layout = QVBoxLayout(self.central)
+        self.outer_layout.setContentsMargins(0, 0, 0, 0)
+        self.outer_layout.setSpacing(0)
+
+        self.banner = QLabel("Вам пришло новое сообщение!")
+        self.banner.setStyleSheet(
+            "background-color: #0088cc; color: white; font-size: 16px; font-weight: bold; padding: 10px;")
+        self.banner.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.banner.hide()
+        self.outer_layout.addWidget(self.banner)
+
+        self.content_widget = QWidget()
+        self.outer_layout.addWidget(self.content_widget)
+
+        self.main_layout = QHBoxLayout(self.content_widget)
         self.main_layout.setContentsMargins(10, 10, 10, 10)
 
         self.tabs = QTabWidget()
@@ -202,6 +222,39 @@ class MainWindow(QMainWindow):
         self.right_layout.addLayout(self.bottom_layout)
         self.main_layout.addLayout(self.right_layout, 3)
 
+    def show_banner(self, text):
+        self.banner.setText(text)
+        self.banner.show()
+        if hasattr(self, 'banner_timer'):
+            self.banner_timer.stop()
+        self.banner_timer = QTimer()
+        self.banner_timer.setSingleShot(True)
+        self.banner_timer.timeout.connect(self.banner.hide)
+        self.banner_timer.start(3000)
+
+    def check_notifications(self):
+        self.has_new = False
+        for self.chat_id, self.chat_name in self.all_chats:
+            self.unread = self.db.get_unread_count(self.chat_id, self.username)
+            self.last = self.last_unread.get(self.chat_id, 0)
+
+            if self.unread > self.last:
+                if self.chat_id == self.current_chat_id:
+                    self.messages.clear()
+                    self.history = self.db.get_messages(self.current_chat_id)
+                    for self.msg in self.history:
+                        self.display_message(self.msg['time'], self.msg['sender'], self.msg['text'])
+                    self.messages.moveCursor(self.messages.textCursor().MoveOperation.End)
+                else:
+                    self.show_banner(f"Вам пришло новое сообщение в чат '{self.chat_name}'!")
+                    QApplication.alert(self, 0)
+                self.has_new = True
+
+            self.last_unread[self.chat_id] = self.unread
+
+        if self.has_new:
+            self.update_chat_list()
+
     def load_avatar(self):
         self.avatar_path = self.db.get_avatar(self.username)
         if self.avatar_path and os.path.exists(self.avatar_path):
@@ -232,11 +285,15 @@ class MainWindow(QMainWindow):
         for self.i, self.user in enumerate(self.users):
             self.users_table.setItem(self.i, 0, QTableWidgetItem(self.user))
 
+        for self.chat_id, self.chat_name in self.all_chats:
+            self.last_unread[self.chat_id] = self.db.get_unread_count(self.chat_id, self.username)
+
         if self.chat_list.count() > 0 and self.current_chat_id is None:
             self.chat_list.setCurrentRow(0)
             self.load_chat()
 
     def update_chat_list(self):
+        current_id = self.current_chat_id
         self.chat_list.clear()
         for self.chat_id, self.chat_name in self.all_chats:
             self.unread = self.db.get_unread_count(self.chat_id, self.username)
@@ -247,6 +304,12 @@ class MainWindow(QMainWindow):
 
             self.chat_list.addItem(self.display_name)
             self.chat_list.item(self.chat_list.count() - 1).setData(1, self.chat_id)
+
+        if current_id is not None:
+            for self.i in range(self.chat_list.count()):
+                if self.chat_list.item(self.i).data(1) == current_id:
+                    self.chat_list.setCurrentRow(self.i)
+                    break
 
     def filter_chats(self, text):
         self.chat_list.clear()
@@ -271,6 +334,8 @@ class MainWindow(QMainWindow):
         self.history = self.db.get_messages(self.current_chat_id)
         for self.msg in self.history:
             self.display_message(self.msg['time'], self.msg['sender'], self.msg['text'])
+
+        self.messages.moveCursor(self.messages.textCursor().MoveOperation.End)
 
     def display_message(self, time, sender, text):
         if text.startswith("📎 IMAGE:"):
@@ -312,7 +377,12 @@ class MainWindow(QMainWindow):
             return
         self.db.add_message(self.current_chat_id, self.username, self.text)
         self.input_field.clear()
-        self.display_message("Сейчас", self.username, self.text)
+
+        self.messages.append(f"<b>[Сейчас] {self.username}:</b> {self.text}<br>")
+        self.messages.moveCursor(self.messages.textCursor().MoveOperation.End)
+
+        self.last_unread[self.current_chat_id] = 0
+        self.update_chat_list()
 
     def attach_file(self):
         if self.current_chat_id is None:
@@ -335,4 +405,21 @@ class MainWindow(QMainWindow):
                 self.text = f"📎 FILE:{self.filename}"
 
             self.db.add_message(self.current_chat_id, self.username, self.text)
-            self.display_message("Сейчас", self.username, self.text)
+
+            if self.text.startswith("📎 IMAGE:"):
+                self.filename = self.text.replace("📎 IMAGE:", "").strip()
+                self.path = os.path.abspath(os.path.join("uploads", self.filename))
+                self.url = QUrl.fromLocalFile(self.path).toString()
+                self.messages.append(f"<b>[Сейчас] {self.username}:</b>")
+                self.messages.insertHtml(
+                    f'<img src="{self.url}" width="250" style="border-radius: 10px; margin-bottom: 10px;"><br>')
+            else:
+                self.filename = self.text.replace("📎 FILE:", "").strip()
+                self.path = os.path.abspath(os.path.join("uploads", self.filename))
+                self.url = QUrl.fromLocalFile(self.path).toString()
+                self.messages.append(
+                    f'<b>[Сейчас] {self.username}:</b> отправил файл <a href="{self.url}" style="color: #0088cc; text-decoration: none;">{self.filename}</a><br>')
+
+            self.messages.moveCursor(self.messages.textCursor().MoveOperation.End)
+            self.last_unread[self.current_chat_id] = 0
+            self.update_chat_list()
