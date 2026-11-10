@@ -1,4 +1,4 @@
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLineEdit, QPushButton, QMessageBox
+from PyQt6.QtWidgets import QLineEdit, QMessageBox, QPushButton, QVBoxLayout, QWidget
 
 
 class AuthWindow(QWidget):
@@ -40,9 +40,12 @@ class AuthWindow(QWidget):
         self.setLayout(self.layout)
 
     def do_login(self):
-        self.username = self.db.login_user(self.login_input.text(), self.pass_input.text())
+        self.username = self.db.login_user(
+            self.login_input.text(), self.pass_input.text()
+        )
         if self.username:
             from main_window import MainWindow
+
             self.main_win = MainWindow(self.db, self.username)
             self.main_win.show()
             self.close()
