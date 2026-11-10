@@ -197,6 +197,39 @@ class MainWindow(QMainWindow):
         self.right_layout.addLayout(self.bottom_layout)
         self.main_layout.addLayout(self.right_layout, 3)
 
+    def scroll_to_bottom(self):
+        self.messages.moveCursor(
+            self.messages.textCursor().MoveOperation.End
+        )
+
+    def append_message(self, time, sender, text):
+        if text.startswith("📎 IMAGE:"):
+            self.filename = text.replace("📎 IMAGE:", "").strip()
+            self.path = os.path.abspath(
+                os.path.join("uploads", self.filename)
+            )
+            self.url = QUrl.fromLocalFile(self.path).toString()
+            html = (
+                f'<img src="{self.url}" width="250" '
+                f'style="border-radius: 10px; margin-bottom: 10px;"><br>'
+            )
+        elif text.startswith("📎 FILE:"):
+            self.filename = text.replace("📎 FILE:", "").strip()
+            self.path = os.path.abspath(
+                os.path.join("uploads", self.filename)
+            )
+            self.url = QUrl.fromLocalFile(self.path).toString()
+            html = (
+                f'отправил файл <a href="{self.url}" '
+                f'style="color: #0088cc; '
+                f'text-decoration: none;">{self.filename}</a><br>'
+            )
+        else:
+            html = f"{text}<br>"
+
+        self.messages.append(f"<b>[{time}] {sender}:</b> {html}")
+        self.scroll_to_bottom()
+
     def show_banner(self, text):
         self.banner.setText(text)
         self.banner.show()
@@ -219,12 +252,9 @@ class MainWindow(QMainWindow):
                     self.messages.clear()
                     history = self.db.get_messages(self.current_chat_id)
                     for msg in history:
-                        self.display_message(
+                        self.append_message(
                             msg["time"], msg["sender"], msg["text"]
                         )
-                    self.messages.moveCursor(
-                        self.messages.textCursor().MoveOperation.End
-                    )
                 else:
                     self.show_banner(
                         f"Новое сообщение в чате '{chat_name}'!"
@@ -335,39 +365,7 @@ class MainWindow(QMainWindow):
 
         history = self.db.get_messages(self.current_chat_id)
         for msg in history:
-            self.display_message(msg["time"], msg["sender"], msg["text"])
-
-        self.messages.moveCursor(
-            self.messages.textCursor().MoveOperation.End
-        )
-
-    def get_file_html(self, text):
-        if text.startswith("📎 IMAGE:"):
-            self.filename = text.replace("📎 IMAGE:", "").strip()
-            self.path = os.path.abspath(
-                os.path.join("uploads", self.filename)
-            )
-            self.url = QUrl.fromLocalFile(self.path).toString()
-            return (
-                f'<img src="{self.url}" width="250" '
-                f'style="border-radius: 10px; margin-bottom: 10px;"><br>'
-            )
-        elif text.startswith("📎 FILE:"):
-            self.filename = text.replace("📎 FILE:", "").strip()
-            self.path = os.path.abspath(
-                os.path.join("uploads", self.filename)
-            )
-            self.url = QUrl.fromLocalFile(self.path).toString()
-            return (
-                f'отправил файл <a href="{self.url}" '
-                f'style="color: #0088cc; '
-                f'text-decoration: none;">{self.filename}</a><br>'
-            )
-        return text + "<br>"
-
-    def display_message(self, time, sender, text):
-        html = self.get_file_html(text)
-        self.messages.append(f"<b>[{time}] {sender}:</b> {html}")
+            self.append_message(msg["time"], msg["sender"], msg["text"])
 
     def open_file(self, url):
         QDesktopServices.openUrl(url)
@@ -417,12 +415,7 @@ class MainWindow(QMainWindow):
         self.db.add_message(self.current_chat_id, self.username, text)
         self.input_field.clear()
 
-        self.messages.append(
-            f"<b>[Сейчас] {self.username}:</b> {text}<br>"
-        )
-        self.messages.moveCursor(
-            self.messages.textCursor().MoveOperation.End
-        )
+        self.append_message("Сейчас", self.username, text)
 
         self.last_unread[self.current_chat_id] = 0
         self.update_chat_list()
@@ -457,13 +450,7 @@ class MainWindow(QMainWindow):
 
             self.db.add_message(self.current_chat_id, self.username, text)
 
-            html = self.get_file_html(text)
-            self.messages.append(
-                f"<b>[Сейчас] {self.username}:</b> {html}"
-            )
+            self.append_message("Сейчас", self.username, text)
 
-            self.messages.moveCursor(
-                self.messages.textCursor().MoveOperation.End
-            )
             self.last_unread[self.current_chat_id] = 0
             self.update_chat_list()
