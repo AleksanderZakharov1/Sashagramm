@@ -1,8 +1,6 @@
 import datetime
 import sqlite3
 
-from cryptography.fernet import InvalidToken
-
 import crypto
 from utils import hash_password
 
@@ -16,10 +14,7 @@ class DatabaseManager:
         self.create_tables()
 
     def get_connection(self):
-        self.conn = sqlite3.connect(
-            DB_NAME, check_same_thread=False, timeout=10
-        )
-        self.conn.execute("PRAGMA foreign_keys = ON")
+        self.conn = sqlite3.connect(DB_NAME, check_same_thread=False)
         return self.conn
 
     def create_tables(self):
@@ -79,9 +74,7 @@ class DatabaseManager:
 
         self.conn = self.get_connection()
         self.cursor = self.conn.cursor()
-        self.cursor.execute(
-            "SELECT id FROM users WHERE login = ?", (login,)
-        )
+        self.cursor.execute("SELECT id FROM users WHERE login = ?", (login,))
         user = self.cursor.fetchone()
 
         if user:
@@ -240,7 +233,7 @@ class DatabaseManager:
         for row in rows:
             try:
                 dec_text = crypto.decrypt_message(row[2])
-            except (InvalidToken, ValueError, TypeError):
+            except Exception:
                 dec_text = "[Ошибка]"
             messages.append(
                 {
