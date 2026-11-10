@@ -7,10 +7,6 @@ from auth import AuthWindow
 from db import DatabaseManager
 
 
-def error_handler(exctype, value, tb):
-    traceback.print_exception(exctype, value, tb)
-
-
 sys.excepthook = error_handler
 
 if __name__ == "__main__":
