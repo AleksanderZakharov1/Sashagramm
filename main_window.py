@@ -291,11 +291,11 @@ class MainWindow(QMainWindow):
             self.chat_list.setCurrentRow(0)
             self.load_chat()
 
-    def update_chat_list(self):
+    def render_chat_list(self, chats_data):
         current_id = self.current_chat_id
         self.chat_list.clear()
 
-        for chat_id, chat_name in self.all_chats:
+        for chat_id, chat_name in chats_data:
             unread = self.db.get_unread_count(chat_id, self.username)
             if unread > 0:
                 display_name = f"{chat_name} ({unread})"
@@ -313,20 +313,15 @@ class MainWindow(QMainWindow):
                     self.chat_list.setCurrentRow(i)
                     break
 
+    def update_chat_list(self):
+        self.render_chat_list(self.all_chats)
+
     def filter_chats(self, text):
-        self.chat_list.clear()
+        filtered = []
         for chat_id, chat_name in self.all_chats:
             if text.lower() in chat_name.lower():
-                unread = self.db.get_unread_count(chat_id, self.username)
-                if unread > 0:
-                    display_name = f"{chat_name} ({unread})"
-                else:
-                    display_name = chat_name
-
-                self.chat_list.addItem(display_name)
-                self.chat_list.item(self.chat_list.count() - 1).setData(
-                    1, chat_id
-                )
+                filtered.append((chat_id, chat_name))
+        self.render_chat_list(filtered)
 
     def load_chat(self, *args):
         current_item = self.chat_list.currentItem()
@@ -346,16 +341,14 @@ class MainWindow(QMainWindow):
             self.messages.textCursor().MoveOperation.End
         )
 
-    def display_message(self, time, sender, text):
+    def get_file_html(self, text):
         if text.startswith("📎 IMAGE:"):
             self.filename = text.replace("📎 IMAGE:", "").strip()
             self.path = os.path.abspath(
                 os.path.join("uploads", self.filename)
             )
             self.url = QUrl.fromLocalFile(self.path).toString()
-
-            self.messages.append(f"<b>[{time}] {sender}:</b>")
-            self.messages.insertHtml(
+            return (
                 f'<img src="{self.url}" width="250" '
                 f'style="border-radius: 10px; margin-bottom: 10px;"><br>'
             )
@@ -365,14 +358,16 @@ class MainWindow(QMainWindow):
                 os.path.join("uploads", self.filename)
             )
             self.url = QUrl.fromLocalFile(self.path).toString()
-
-            self.messages.append(
-                f"<b>[{time}] {sender}:</b> отправил файл "
-                f'<a href="{self.url}" style="color: #0088cc; '
+            return (
+                f'отправил файл <a href="{self.url}" '
+                f'style="color: #0088cc; '
                 f'text-decoration: none;">{self.filename}</a><br>'
             )
-        else:
-            self.messages.append(f"<b>[{time}] {sender}:</b> {text}<br>")
+        return text + "<br>"
+
+    def display_message(self, time, sender, text):
+        html = self.get_file_html(text)
+        self.messages.append(f"<b>[{time}] {sender}:</b> {html}")
 
     def open_file(self, url):
         QDesktopServices.openUrl(url)
@@ -462,33 +457,10 @@ class MainWindow(QMainWindow):
 
             self.db.add_message(self.current_chat_id, self.username, text)
 
-            if text.startswith("📎 IMAGE:"):
-                self.filename = text.replace("📎 IMAGE:", "").strip()
-                self.path = os.path.abspath(
-                    os.path.join("uploads", self.filename)
-                )
-                self.url = QUrl.fromLocalFile(self.path).toString()
-
-                self.messages.append(
-                    f"<b>[Сейчас] {self.username}:</b>"
-                )
-                self.messages.insertHtml(
-                    f'<img src="{self.url}" width="250" '
-                    f'style="border-radius: 10px; '
-                    f'margin-bottom: 10px;"><br>'
-                )
-            else:
-                self.filename = text.replace("📎 FILE:", "").strip()
-                self.path = os.path.abspath(
-                    os.path.join("uploads", self.filename)
-                )
-                self.url = QUrl.fromLocalFile(self.path).toString()
-
-                self.messages.append(
-                    f"<b>[Сейчас] {self.username}:</b> отправил файл "
-                    f'<a href="{self.url}" style="color: #0088cc; '
-                    f'text-decoration: none;">{self.filename}</a><br>'
-                )
+            html = self.get_file_html(text)
+            self.messages.append(
+                f"<b>[Сейчас] {self.username}:</b> {html}"
+            )
 
             self.messages.moveCursor(
                 self.messages.textCursor().MoveOperation.End
