@@ -1,6 +1,8 @@
 import datetime
 import sqlite3
 
+from cryptography.fernet import InvalidToken
+
 import crypto
 from utils import hash_password
 
@@ -44,10 +46,7 @@ class DatabaseManager:
             CREATE TABLE IF NOT EXISTS members (
                 chat_id INTEGER,
                 login TEXT,
-                last_read_msg_id INTEGER DEFAULT 0,
-                PRIMARY KEY (chat_id, login),
-                FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE CASCADE,
-                FOREIGN KEY (login) REFERENCES users(login) ON DELETE CASCADE
+                last_read_msg_id INTEGER DEFAULT 0
             )
             """
         )
@@ -58,9 +57,7 @@ class DatabaseManager:
                 chat_id INTEGER,
                 sender TEXT,
                 msg_text TEXT,
-                msg_time TEXT,
-                FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE CASCADE,
-                FOREIGN KEY (sender) REFERENCES users(login) ON DELETE CASCADE
+                msg_time TEXT
             )
             """
         )
@@ -233,7 +230,7 @@ class DatabaseManager:
         for row in rows:
             try:
                 dec_text = crypto.decrypt_message(row[2])
-            except Exception:
+            except InvalidToken:
                 dec_text = "[Ошибка]"
             messages.append(
                 {

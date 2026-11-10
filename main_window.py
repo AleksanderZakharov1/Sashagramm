@@ -39,6 +39,10 @@ class MainWindow(QMainWindow):
         self.path = ""
         self.url = ""
 
+        self.banner_timer = QTimer(self)
+        self.banner_timer.setSingleShot(True)
+        self.banner_timer.timeout.connect(self.hide_banner)
+
         self.setWindowTitle(f"Сашаграмм - {self.username}")
         self.resize(1000, 700)
 
@@ -196,14 +200,13 @@ class MainWindow(QMainWindow):
     def show_banner(self, text):
         self.banner.setText(text)
         self.banner.show()
-
-        if hasattr(self, "banner_timer"):
-            self.banner_timer.stop()
-
-        self.banner_timer = QTimer(self)
-        self.banner_timer.setSingleShot(True)
-        self.banner_timer.timeout.connect(self.banner.hide)
         self.banner_timer.start(3000)
+
+    def hide_banner(self):
+        self.banner.hide()
+
+    def show_startup_banner(self):
+        self.show_banner(self.startup_text)
 
     def check_notifications(self):
         has_new = False
@@ -270,19 +273,19 @@ class MainWindow(QMainWindow):
             self.users_table.setItem(i, 0, QTableWidgetItem(user))
 
         has_startup_unread = False
-        startup_text = ""
+        self.startup_text = ""
         for chat_id, chat_name in self.all_chats:
             unread = self.db.get_unread_count(chat_id, self.username)
             self.last_unread[chat_id] = unread
             if unread > 0:
                 has_startup_unread = True
-                startup_text = (
+                self.startup_text = (
                     f"У вас {unread} непрочитанных сообщений "
                     f"в чате '{chat_name}'!"
                 )
 
         if has_startup_unread:
-            QTimer.singleShot(500, lambda: self.show_banner(startup_text))
+            QTimer.singleShot(500, self.show_startup_banner)
 
         if self.chat_list.count() > 0 and self.current_chat_id is None:
             self.chat_list.setCurrentRow(0)
