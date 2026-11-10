@@ -1,18 +1,13 @@
 import sys
-import traceback
 
 from PyQt6.QtWidgets import QApplication
 
+import db
 from auth import AuthWindow
-from db import DatabaseManager
-
-
-sys.excepthook = error_handler
 
 if __name__ == "__main__":
-    db = DatabaseManager()
+    db.init_db()
     app = QApplication(sys.argv)
-    auth_win = AuthWindow(db)
+    auth_win = AuthWindow()
     auth_win.show()
     sys.exit(app.exec())
-
