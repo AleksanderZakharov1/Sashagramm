@@ -4,7 +4,6 @@ import shutil
 from PyQt6.QtCore import Qt, QTimer, QUrl
 from PyQt6.QtGui import QAction, QDesktopServices, QPixmap
 from PyQt6.QtWidgets import (
-    QApplication,
     QFileDialog,
     QHBoxLayout,
     QHeaderView,
@@ -34,14 +33,6 @@ class MainWindow(QMainWindow):
         self.current_chat_id = None
         self.all_chats = []
         self.last_unread = {}
-        self.filename = ""
-        self.text = ""
-        self.path = ""
-        self.url = ""
-
-        self.banner_timer = QTimer(self)
-        self.banner_timer.setSingleShot(True)
-        self.banner_timer.timeout.connect(self.hide_banner)
 
         self.setWindowTitle(f"Сашаграмм - {self.username}")
         self.resize(1000, 700)
@@ -197,75 +188,70 @@ class MainWindow(QMainWindow):
         self.right_layout.addLayout(self.bottom_layout)
         self.main_layout.addLayout(self.right_layout, 3)
 
-    def scroll_to_bottom(self):
-        self.messages.moveCursor(
-            self.messages.textCursor().MoveOperation.End
-        )
-
     def append_message(self, time, sender, text):
+        filename = ""
+        url = ""
+
         if text.startswith("📎 IMAGE:"):
-            self.filename = text.replace("📎 IMAGE:", "").strip()
-            self.path = os.path.abspath(
-                os.path.join("uploads", self.filename)
-            )
-            self.url = QUrl.fromLocalFile(self.path).toString()
+            filename = text.replace("📎 IMAGE:", "").strip()
+            path = os.path.abspath(os.path.join("uploads", filename))
+            url = QUrl.fromLocalFile(path).toString()
             html = (
-                f'<img src="{self.url}" width="250" '
+                f'<img src="{url}" width="250" '
                 f'style="border-radius: 10px; margin-bottom: 10px;"><br>'
             )
         elif text.startswith("📎 FILE:"):
-            self.filename = text.replace("📎 FILE:", "").strip()
-            self.path = os.path.abspath(
-                os.path.join("uploads", self.filename)
-            )
-            self.url = QUrl.fromLocalFile(self.path).toString()
+            filename = text.replace("📎 FILE:", "").strip()
+            path = os.path.abspath(os.path.join("uploads", filename))
+            url = QUrl.fromLocalFile(path).toString()
             html = (
-                f'отправил файл <a href="{self.url}" '
+                f'отправил файл <a href="{url}" '
                 f'style="color: #0088cc; '
-                f'text-decoration: none;">{self.filename}</a><br>'
+                f'text-decoration: none;">{filename}</a><br>'
             )
         else:
             html = f"{text}<br>"
 
         self.messages.append(f"<b>[{time}] {sender}:</b> {html}")
-        self.scroll_to_bottom()
-
-    def show_banner(self, text):
-        self.banner.setText(text)
-        self.banner.show()
-        self.banner_timer.start(3000)
-
-    def hide_banner(self):
-        self.banner.hide()
-
-    def show_startup_banner(self):
-        self.show_banner(self.startup_text)
+        self.messages.moveCursor(self.messages.textCursor().MoveOperation.End)
 
     def check_notifications(self):
-        has_new = False
+        self.all_chats = self.db.get_chats(self.username)
+
+        total_unread = 0
+        has_new_in_current = False
+
         for chat_id, chat_name in self.all_chats:
             unread = self.db.get_unread_count(chat_id, self.username)
             last = self.last_unread.get(chat_id, 0)
 
             if unread > last:
                 if chat_id == self.current_chat_id:
-                    self.messages.clear()
-                    history = self.db.get_messages(self.current_chat_id)
-                    for msg in history:
-                        self.append_message(
-                            msg["time"], msg["sender"], msg["text"]
-                        )
-                else:
-                    self.show_banner(
-                        f"Новое сообщение в чате '{chat_name}'!"
-                    )
-                    QApplication.alert(self, 0)
-                has_new = True
+                    has_new_in_current = True
+                self.last_unread[chat_id] = unread
 
-            self.last_unread[chat_id] = unread
+            if unread > 0:
+                total_unread += unread
 
-        if has_new:
-            self.update_chat_list()
+        if has_new_in_current and self.current_chat_id is not None:
+            self.messages.clear()
+            history = self.db.get_messages(self.current_chat_id)
+            for msg in history:
+                self.append_message(msg["time"], msg["sender"], msg["text"])
+
+            self.db.mark_as_read(self.current_chat_id, self.username)
+            self.last_unread[self.current_chat_id] = 0
+            total_unread = sum(self.db.get_unread_count(c[0], self.username) for c in self.all_chats)
+
+        if total_unread > 0:
+            self.banner.setText(f"У вас {total_unread} непрочитанных сообщений!")
+            self.banner.show()
+            self.setWindowTitle(f"(!) Сашаграмм - {self.username}")
+        else:
+            self.banner.hide()
+            self.setWindowTitle(f"Сашаграмм - {self.username}")
+
+        self.render_chat_list(self.all_chats)
 
     def load_avatar(self):
         avatar_path = self.db.get_avatar(self.username)
@@ -295,27 +281,16 @@ class MainWindow(QMainWindow):
 
     def load_data(self):
         self.all_chats = self.db.get_chats(self.username)
-        self.update_chat_list()
+        self.render_chat_list(self.all_chats)
 
         users = self.db.get_all_users()
         self.users_table.setRowCount(len(users))
         for i, user in enumerate(users):
             self.users_table.setItem(i, 0, QTableWidgetItem(user))
 
-        has_startup_unread = False
-        self.startup_text = ""
         for chat_id, chat_name in self.all_chats:
             unread = self.db.get_unread_count(chat_id, self.username)
             self.last_unread[chat_id] = unread
-            if unread > 0:
-                has_startup_unread = True
-                self.startup_text = (
-                    f"У вас {unread} непрочитанных сообщений "
-                    f"в чате '{chat_name}'!"
-                )
-
-        if has_startup_unread:
-            QTimer.singleShot(500, self.show_startup_banner)
 
         if self.chat_list.count() > 0 and self.current_chat_id is None:
             self.chat_list.setCurrentRow(0)
@@ -333,18 +308,13 @@ class MainWindow(QMainWindow):
                 display_name = chat_name
 
             self.chat_list.addItem(display_name)
-            self.chat_list.item(self.chat_list.count() - 1).setData(
-                1, chat_id
-            )
+            self.chat_list.item(self.chat_list.count() - 1).setData(1, chat_id)
 
         if current_id is not None:
             for i in range(self.chat_list.count()):
                 if self.chat_list.item(i).data(1) == current_id:
                     self.chat_list.setCurrentRow(i)
                     break
-
-    def update_chat_list(self):
-        self.render_chat_list(self.all_chats)
 
     def filter_chats(self, text):
         filtered = []
@@ -360,12 +330,17 @@ class MainWindow(QMainWindow):
 
         self.current_chat_id = current_item.data(1)
         self.db.mark_as_read(self.current_chat_id, self.username)
-        self.update_chat_list()
+        self.last_unread[self.current_chat_id] = 0
+        self.render_chat_list(self.all_chats)
         self.messages.clear()
 
         history = self.db.get_messages(self.current_chat_id)
         for msg in history:
             self.append_message(msg["time"], msg["sender"], msg["text"])
+
+        if not any(self.db.get_unread_count(c[0], self.username) for c in self.all_chats):
+            self.banner.hide()
+            self.setWindowTitle(f"Сашаграмм - {self.username}")
 
     def open_file(self, url):
         QDesktopServices.openUrl(url)
@@ -379,15 +354,11 @@ class MainWindow(QMainWindow):
                 self.current_chat_id = None
                 self.load_data()
             else:
-                QMessageBox.warning(
-                    self, "Ошибка", "Введите название чата"
-                )
+                QMessageBox.warning(self, "Ошибка", "Введите название чата")
 
     def show_about(self):
         QMessageBox.information(
-            self,
-            "О программе",
-            f"Сашаграмм\nПользователь: {self.username}",
+            self, "О программе", f"Сашаграмм\nПользователь: {self.username}"
         )
 
     def export_chat(self):
@@ -418,7 +389,7 @@ class MainWindow(QMainWindow):
         self.append_message("Сейчас", self.username, text)
 
         self.last_unread[self.current_chat_id] = 0
-        self.update_chat_list()
+        self.render_chat_list(self.all_chats)
 
     def attach_file(self):
         if self.current_chat_id is None:
@@ -429,9 +400,7 @@ class MainWindow(QMainWindow):
             file_size = os.path.getsize(file_path)
             if file_size > 50 * 1024 * 1024:
                 QMessageBox.warning(
-                    self,
-                    "Ошибка",
-                    "Файл слишком большой! Максимум 50 МБ.",
+                    self, "Ошибка", "Файл слишком большой! Максимум 50 МБ."
                 )
                 return
 
@@ -441,16 +410,13 @@ class MainWindow(QMainWindow):
 
             shutil.copy(file_path, os.path.join("uploads", filename))
 
-            if filename.lower().endswith(
-                (".png", ".jpg", ".jpeg", ".gif")
-            ):
+            if filename.lower().endswith((".png", ".jpg", ".jpeg", ".gif")):
                 text = f"📎 IMAGE:{filename}"
             else:
                 text = f"📎 FILE:{filename}"
 
             self.db.add_message(self.current_chat_id, self.username, text)
-
             self.append_message("Сейчас", self.username, text)
 
             self.last_unread[self.current_chat_id] = 0
-            self.update_chat_list()
+            self.render_chat_list(self.all_chats)
